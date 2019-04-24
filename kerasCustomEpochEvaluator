@@ -1,0 +1,95 @@
+import matplotlib.pyplot as plt
+plt.rcParams["axes.grid"] = False # Import this to remove grid lines in matplotlob
+from keras.callbacks import Callback
+
+
+class CustomEpochEvaluator(Callback):
+    def __init__(self, X_val, y_val, func):
+        super(CustomEpochEvaluator, self).__init__()
+        self.X_val = X_val
+        self.y_val = y_val
+        self.func = func
+    
+    def on_epoch_end(self, epoch, logs=None):
+        y_pred = self.model.predict(self.X_val)
+        self.func(y_val, y_pred)
+
+        
+def plot_confusion_matrix(y_true, y_pred, classes=None, rotated_x_classes=False, normalize=False, title=None, cmap=plt.cm.Blues):
+    from sklearn.metrics import confusion_matrix
+    from sklearn.utils.multiclass import unique_labels
+    if not title:
+        if normalize:
+            title = 'Normalized confusion matrix'
+        else:
+            title = 'Confusion matrix, without normalization'
+    cm = confusion_matrix(y_true, y_pred)
+    if classes is None:
+        classes = unique_labels(y_true, y_pred).astype(int)
+    classes = np.array(classes)[unique_labels(y_true, y_pred).astype(int)]
+    if normalize:
+        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+    fig, ax = plt.subplots()
+    im = ax.imshow(cm, interpolation='nearest', cmap=cmap)
+    ax.figure.colorbar(im, ax=ax)
+    ax.set(xticks=np.arange(cm.shape[1]),
+           yticks=np.arange(cm.shape[0]),
+           xticklabels=classes,
+           yticklabels=classes,
+           title=title,
+           ylabel='True label',
+           xlabel='Predicted label')
+    if rotated_x_classes:
+        plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
+    fmt = '.2f' if normalize else 'd'
+    thresh = cm.max() / 2.
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            ax.text(j, i, format(cm[i, j], fmt),
+                    ha="center", va="center",
+                    color="white" if cm[i, j] > thresh else "black")
+    fig.tight_layout()
+    return ax
+
+
+def confusionMatrixEvaluator(y_true, y_pred):
+    y_pred = (y_pred > 0.5).astype(int)
+    plot_confusion_matrix(y_true, y_pred, normalize=True)
+    plt.show()
+
+
+def binaryClassifierManyMetricsEvaluator(y_true, y_pred, acc=True, prec=True, rec=True, spec=False):
+    from sklearn.metrics import confusion_matrix
+    y_pred = (y_pred > 0.5).astype(int)
+    cm = confusion_matrix( y_true, y_pred)
+    TN, FN, FP, TP = cm[0,0], cm[1,0], cm[0,1], cm[1,1]
+    if acc:
+        print("Accuracy:",float(TP + TN) / (TP + TN + FP + FN))
+    if prec:
+        print("Precision:",float(TP) / (TP + FP))
+    if rec:
+        print("Recall (sensitivity):", float(TP) / (TP + FN))
+    if spec:
+        print("Specificity:", float(TN) / (TN + FP))
+
+
+def binaryClassifierRocAucEvaluator(y_true, y_pred):
+    from sklearn.metrics import roc_curve, auc
+    y_pred_keras = y_pred.ravel()
+    fpr_keras, tpr_keras, thresholds_keras = roc_curve(y_true, y_pred_keras)
+    auc_keras = auc(fpr_keras, tpr_keras)
+    
+    plt.plot([0, 1], [0, 1], 'k--')
+    plt.plot(fpr_keras, tpr_keras, label='Binary classifier (area = {:.3f})'.format(auc_keras))
+    plt.xlabel('False positive rate')
+    plt.ylabel('True positive rate')
+    plt.title('ROC curve')
+    plt.legend(loc='best')
+    plt.show()
+
+
+# Usage:
+# cme = CustomEpochEvaluator(x_val, y_val, confusionMatrixEvaluator)
+# bcmme = CustomEpochEvaluator(x_val, y_val, binaryClassifierManyMetricsEvaluator)
+# bcrae = CustomEpochEvaluator(x_val, y_val, binaryClassifierRocAucEvaluator)
+# model.fit(x_train, y_train, epochs=10, batch_size=32, validation_data=(x_val, y_val), callbacks=[bcmme, cme, bcrae])
